@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Study Buddy Chatbot</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Be Vietnam Pro', sans-serif;
+            background-color: #f0f2f5;
+        }
+        #chat-container {
+            max-height: 80vh;
+        }
+        .user-message {
+            background-color: #3b82f6;
+            color: white;
+            border-bottom-right-radius: 0;
+        }
+        .bot-message {
+            background-color: #e5e7eb;
+            color: #374151;
+            border-bottom-left-radius: 0;
+        }
+        .loading-dots:after {
+            content: ' .';
+            animation: dots 1s steps(5, end) infinite;
+        }
+        @keyframes dots {
+            to {
+                content: '...';
+            }
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center min-h-screen p-4">
+
+    <div class="w-full max-w-2xl bg-white rounded-xl shadow-lg flex flex-col h-[90vh]">
+        
+        <header class="p-4 border-b border-gray-200 text-center text-xl font-bold bg-blue-600 text-white rounded-t-xl">
+            Study Buddy Chatbot
+        </header>
+
+        <div id="chat-container" class="flex-grow overflow-y-auto p-4 space-y-4">
+            <div class="flex justify-start">
+                <div class="bg-gray-200 text-gray-700 p-3 rounded-2xl max-w-[80%] shadow">
+                    Chào bạn! Tôi là Study Buddy, trợ lý học tập AI của bạn. Tôi có thể giúp gì cho bạn hôm nay?
+                </div>
+            </div>
+        </div>
+
+        <footer class="p-4 border-t border-gray-200 flex items-center gap-2">
+            <input id="user-input" type="text" placeholder="Nhập câu hỏi của bạn..." class="flex-grow p-3 rounded-full border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <button id="send-button" class="bg-blue-600 text-white p-3 rounded-full hover:bg-blue-700 transition duration-300">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 transform rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                </svg>
+            </button>
+        </footer>
+
+    </div>
+
+    <script>
+        const userInput = document.getElementById('user-input');
+        const sendButton = document.getElementById('send-button');
+        const chatContainer = document.getElementById('chat-container');
+
+        const apiKey = ""; // Leave this as an empty string. The Canvas environment will provide the API key.
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+
+        // Function to display a message in the chat window
+        function displayMessage(text, sender) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `flex ${sender === 'user' ? 'justify-end' : 'justify-start'}`;
+            messageDiv.innerHTML = `
+                <div class="${sender === 'user' ? 'user-message' : 'bot-message'} p-3 rounded-2xl max-w-[80%] shadow">
+                    ${text}
+                </div>
+            `;
+            chatContainer.appendChild(messageDiv);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        // Function to show a loading indicator
+        function showLoading() {
+            const loadingDiv = document.createElement('div');
+            loadingDiv.id = 'loading-indicator';
+            loadingDiv.className = 'flex justify-start';
+            loadingDiv.innerHTML = `
+                <div class="bot-message p-3 rounded-2xl max-w-[80%] shadow">
+                    <span>Đang trả lời<span class="loading-dots"></span></span>
+                </div>
+            `;
+            chatContainer.appendChild(loadingDiv);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        // Function to remove the loading indicator
+        function removeLoading() {
+            const loadingIndicator = document.getElementById('loading-indicator');
+            if (loadingIndicator) {
+                loadingIndicator.remove();
+            }
+        }
+
+        // Function to send a message to the API and handle the response
+        async function sendMessage() {
+            const message = userInput.value.trim();
+            if (message === "") return;
+
+            displayMessage(message, 'user');
+            userInput.value = '';
+            sendButton.disabled = true;
+            showLoading();
+
+            try {
+                const chatHistory = [{ role: "user", parts: [{ text: `Trả lời câu hỏi này một cách ngắn gọn và chuyên nghiệp bằng tiếng Việt: ${message}` }] }];
+                const payload = { contents: chatHistory };
+                
+                let response;
+                for (let i = 0; i < 3; i++) {
+                    response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    if (response.status !== 429) break;
+                    await new Promise(resolve => setTimeout(resolve, Math.pow(2, i) * 1000));
+                }
+                if (response.status === 429) throw new Error('Too many requests');
+
+                const result = await response.json();
+                removeLoading();
+                
+                if (result.candidates && result.candidates.length > 0 &&
+                    result.candidates[0].content && result.candidates[0].content.parts &&
+                    result.candidates[0].content.parts.length > 0) {
+                    const text = result.candidates[0].content.parts[0].text;
+                    displayMessage(text, 'bot');
+                } else {
+                    displayMessage('Rất tiếc, tôi không thể trả lời câu hỏi này.', 'bot');
+                }
+            } catch (error) {
+                removeLoading();
+                console.error('Error fetching API response:', error);
+                displayMessage('Đã xảy ra lỗi khi kết nối với máy chủ. Vui lòng thử lại sau.', 'bot');
+            } finally {
+                sendButton.disabled = false;
+            }
+        }
+
+        // Event listeners for sending a message
+        sendButton.addEventListener('click', sendMessage);
+        userInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+    </script>
+
+</body>
+</html>
